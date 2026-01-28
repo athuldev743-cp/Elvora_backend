@@ -1,5 +1,4 @@
-# requirements.txt - Tested to work together
-fastapi # Last version supporting Pydantic v1
+fastapi
 uvicorn[standard]
 sqlalchemy==1.4.46
 pydantic<2

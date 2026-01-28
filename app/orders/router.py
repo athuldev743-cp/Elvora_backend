@@ -1,53 +1,42 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.database import get_db
-from app.models import Order
-from app.dependencies.admin import admin_only
 from typing import List
+from app.database import get_db
+from app.models import Order as OrderModel
+from app.schemas import OrderResponse, OrderCreate, OrderUpdate
+from app.dependencies.admin import admin_only
 
 router = APIRouter()
 
 # -----------------------------
-# ADMIN: GET ALL ORDERS
+# ADMIN ENDPOINTS
 # -----------------------------
-@router.get("/admin")
+@router.get("/admin", response_model=List[OrderResponse])
 def get_all_orders(db: Session = Depends(get_db), admin=Depends(admin_only)):
-    return db.query(Order).order_by(Order.created_at.desc()).all()
+    orders = db.query(OrderModel).order_by(OrderModel.created_at.desc()).all()
+    return orders
 
-# -----------------------------
-# ADMIN: UPDATE ORDER STATUS
-# -----------------------------
-@router.put("/{order_id}/status")
+@router.put("/admin/{order_id}/status", response_model=OrderResponse)
 def update_order_status(
     order_id: int,
-    status: str,
+    order_update: OrderUpdate,
     db: Session = Depends(get_db),
     admin=Depends(admin_only)
 ):
-    order = db.query(Order).filter(Order.id == order_id).first()
+    order = db.query(OrderModel).filter(OrderModel.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-
-    order.status = status
+    
+    if order_update.status:
+        order.status = order_update.status
+    
     db.commit()
     db.refresh(order)
+    return order
 
-    return {
-        "message": "Order status updated",
-        "order_id": order_id,
-        "status": status
-    }
-
-# -----------------------------
-# ADMIN: DELETE ORDER
-# -----------------------------
-@router.delete("/{order_id}")
-def delete_order(
-    order_id: int,
-    db: Session = Depends(get_db),
-    admin=Depends(admin_only)
-):
-    order = db.query(Order).filter(Order.id == order_id).first()
+@router.delete("/admin/{order_id}")
+def delete_order(order_id: int, db: Session = Depends(get_db), admin=Depends(admin_only)):
+    order = db.query(OrderModel).filter(OrderModel.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     
@@ -56,34 +45,21 @@ def delete_order(
     return {"message": "Order deleted successfully"}
 
 # -----------------------------
-# PUBLIC: CREATE ORDER
+# PUBLIC ENDPOINTS
 # -----------------------------
-@router.post("/")
-def create_order(
-    user_email: str,
-    product_name: str,
-    quantity: int = 1,
-    total_price: float = 0,
-    db: Session = Depends(get_db)
-):
-    order = Order(
-        user_email=user_email,
-        product_name=product_name,
-        quantity=quantity,
-        total_price=total_price,
-        status="pending"  # Add default status
-    )
+@router.post("/", response_model=OrderResponse)
+def create_order(order_data: OrderCreate, db: Session = Depends(get_db)):
+    order_dict = order_data.model_dump()
+    order = OrderModel(**order_dict, status="pending")
+    
     db.add(order)
     db.commit()
     db.refresh(order)
     return order
 
-# -----------------------------
-# PUBLIC: GET ORDER (for order confirmation)
-# -----------------------------
-@router.get("/{order_id}")
+@router.get("/{order_id}", response_model=OrderResponse)
 def get_order(order_id: int, db: Session = Depends(get_db)):
-    order = db.query(Order).filter(Order.id == order_id).first()
+    order = db.query(OrderModel).filter(OrderModel.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     return order
