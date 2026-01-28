@@ -1,8 +1,8 @@
 # requirements.txt - Tested to work together
-fastapi==0.95.2  # Last version supporting Pydantic v1
-uvicorn[standard]==0.21.1
+fastapi # Last version supporting Pydantic v1
+uvicorn[standard]
 sqlalchemy==1.4.46
-pydantic==1.10.12
+pydantic<2
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 python-multipart==0.0.6
