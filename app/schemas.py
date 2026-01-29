@@ -1,5 +1,5 @@
 # app/schemas.py - Complete version
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime
 
@@ -11,7 +11,7 @@ class GoogleAuthRequest(BaseModel):
 class UserResponse(BaseModel):
     id: int
     name: str
-    email: str  # Changed from EmailStr to avoid email-validator dependency
+    email: str
     role: str
 
     class Config:
@@ -55,21 +55,31 @@ class ProductResponse(ProductBase):
 
 # -------- Order Schemas --------
 class OrderBase(BaseModel):
-    user_email: str
+    product_id: int
     product_name: str
-    quantity: Optional[int] = 1
-    total_price: Optional[float] = 0
+    quantity: int = 1
+    unit_price: float
+    total_amount: float
+    customer_name: str
+    customer_email: str
+    customer_phone: str
+    shipping_address: str
+    notes: Optional[str] = None
+    status: Optional[str] = "pending"
+    payment_status: Optional[str] = "pending"
 
 class OrderCreate(OrderBase):
     pass
 
 class OrderUpdate(BaseModel):
     status: Optional[str] = None
+    payment_status: Optional[str] = None
+    notes: Optional[str] = None
 
 class OrderResponse(OrderBase):
     id: int
-    status: str
-    created_at: Optional[datetime] = None
+    order_date: datetime
+    updated_at: datetime
     
     class Config:
         orm_mode = True
