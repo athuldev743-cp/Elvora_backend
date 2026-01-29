@@ -24,7 +24,7 @@ class Product(Base):
     price = Column(Float, nullable=False)
     image_url = Column(VARCHAR)
     priority = Column(Integer, default=100)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    #created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Order(Base):
