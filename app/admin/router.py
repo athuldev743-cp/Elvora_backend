@@ -2,9 +2,12 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Header
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import Product
+from app.models import Product,Order
 import os
 from app.cloudinary_setup import upload_to_cloudinary, delete_from_cloudinary
+from app.email import send_order_confirmation_email 
+from sqlalchemy import text
+
 
 router = APIRouter()
 
@@ -128,7 +131,82 @@ async def delete_product(product_id: int, db: Session = Depends(get_db), admin=D
 # -----------------------------
 # GET ALL ORDERS
 # -----------------------------
+# -----------------------------
+# GET ALL ORDERS (Admin)
+# -----------------------------
 @router.get("/orders")
 def get_admin_orders(db: Session = Depends(get_db), admin=Depends(admin_required)):
-    # Return empty array for now
-    return []
+    try:
+        orders = db.query(Order).order_by(Order.id.desc()).all()
+
+        result = []
+        for o in orders:
+            result.append({
+                "id": o.id,
+                "product_id": o.product_id,
+                "product_name": o.product_name,
+                "quantity": o.quantity,
+                "unit_price": float(o.unit_price),
+                "total_amount": float(o.total_amount),
+                "customer_name": o.customer_name,
+                "customer_email": o.customer_email,
+                "customer_phone": o.customer_phone,
+                "shipping_address": o.shipping_address,
+                "notes": o.notes,
+                "status": o.status,
+                "payment_status": o.payment_status,
+                "order_date": o.order_date.isoformat() if o.order_date else None,
+                "updated_at": o.updated_at.isoformat() if o.updated_at else None,
+            })
+
+        return result
+    except Exception as e:
+        print(f"Error fetching admin orders: {e}")
+        return []
+
+
+# -----------------------------
+# TEMP: RESET ORDERS TABLE (Drops old schema)
+# -----------------------------
+@router.post("/reset-orders-table")
+def reset_orders_table(db: Session = Depends(get_db), admin=Depends(admin_required)):
+    """
+    WARNING: Deletes ALL orders. Use once to fix schema mismatch on SQLite.
+    After successful reset, REMOVE this endpoint.
+    """
+    db.execute(text("DROP TABLE IF EXISTS orders"))
+    db.commit()
+    return {"status": "ok", "message": "orders table dropped. Restart service to recreate it."}
+@router.post("/orders/{order_id}/approve")
+def approve_order(
+    order_id: int,
+    db: Session = Depends(get_db),
+    admin=Depends(admin_required)
+):
+    order = db.query(Order).filter(Order.id == order_id).first()
+
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    if order.status == "confirmed":
+        return {"message": "Order already confirmed"}
+
+    order.status = "confirmed"
+    order.payment_status = "paid"
+    db.commit()
+    db.refresh(order)
+
+    # 🔔 SEND EMAIL
+    send_order_confirmation_email(
+        to_email=order.customer_email,
+        customer_name=order.customer_name,
+        order_id=order.id,
+        product_name=order.product_name,
+        total_amount=order.total_amount,
+    )
+
+    return {
+        "status": "success",
+        "message": "Order approved and email sent",
+        "order_id": order.id,
+    }
