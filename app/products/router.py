@@ -1,20 +1,20 @@
-# app/products/router.py - FIXED VERSION
+# app/products/router.py - Return real database products
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from app.database import get_db  # Import from database
-from app.models import Product  # Import Product model
+from app.database import get_db
+from app.models import Product
 
 router = APIRouter()
 
 @router.get("/products")
 def get_products(db: Session = Depends(get_db)):
     try:
-        print("Fetching products from database...")
-        
-        # Query products
+        # Get ALL products from database
         products = db.query(Product).order_by(Product.priority.asc()).all()
         
-        print(f"Found {len(products)} products")
+        if not products:
+            # If no products in database, return empty array
+            return []
         
         # Convert to list of dicts
         result = []
@@ -32,22 +32,4 @@ def get_products(db: Session = Depends(get_db)):
         
     except Exception as e:
         print(f"Error fetching products: {e}")
-        # Return mock data if database fails
-        return [
-            {
-                "id": 1,
-                "name": "Redensyl Hair Growth Serum",
-                "price": 299.0,
-                "description": "Advanced hair growth serum",
-                "image_url": "/images/redensyl.jpg",
-                "priority": 1
-            },
-            {
-                "id": 2,
-                "name": "Vitamin C Serum",
-                "price": 499.0,
-                "description": "Brightening serum",
-                "image_url": "/images/vitamin-c.jpg", 
-                "priority": 2
-            }
-        ]
+        return []  # Return empty array on error

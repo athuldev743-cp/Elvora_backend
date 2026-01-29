@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey, VARCHAR
 from app.database import Base
 
 
@@ -19,10 +19,8 @@ class Product(Base):
     name = Column(String, nullable=False)
     description = Column(String)
     price = Column(Float, nullable=False)
-    image_url = Column(String)
-
-    priority = Column(Integer, default=100)  
-    # 🔥 LOWER NUMBER = HIGHER PRIORITY
+    image_url = Column(VARCHAR)  # Change from String to VARCHAR
+    priority = Column(Integer, default=100)
 
 
 class Order(Base):
