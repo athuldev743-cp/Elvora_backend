@@ -4,6 +4,7 @@ from app.database import get_db
 from app.models import Order
 from app.schemas import OrderResponse, OrderCreate
 from datetime import datetime
+from fastapi import Query
 
 router = APIRouter()
 
@@ -58,3 +59,8 @@ def get_order(order_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         print(f"❌ [Backend] Error fetching order {order_id}: {repr(e)}")
         raise HTTPException(status_code=500, detail="Failed to fetch order")
+
+@router.get("/orders")
+def list_orders(email: str = Query(...), db: Session = Depends(get_db)):
+    orders = db.query(Order).filter(Order.customer_email == email).order_by(Order.id.desc()).all()
+    return orders

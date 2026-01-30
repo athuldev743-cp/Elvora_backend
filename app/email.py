@@ -1,18 +1,12 @@
-# app/email.py
 import os
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import requests
 
-SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+RESEND_API_KEY = os.getenv("RESEND_API_KEY")
+FROM_EMAIL = os.getenv("FROM_EMAIL", "EkaBhumi <onboarding@resend.dev>")  # or your verified sender
 
 def send_order_confirmation_email(to_email, customer_name, order_id, product_name, total_amount):
-    smtp_email = os.getenv("SMTP_EMAIL")
-    smtp_password = os.getenv("SMTP_APP_PASSWORD")  # Gmail app password
-
-    if not smtp_email or not smtp_password:
-        raise RuntimeError("SMTP_EMAIL / SMTP_APP_PASSWORD missing in env")
+    if not RESEND_API_KEY:
+        raise RuntimeError("RESEND_API_KEY missing in env")
 
     subject = "✅ Your EkaBhumi Order is Confirmed"
     body = f"""Hi {customer_name},
@@ -26,15 +20,20 @@ Total Amount: ₹{total_amount:.2f}
 Thank you for choosing EkaBhumi 🌿
 """
 
-    msg = MIMEMultipart()
-    msg["From"] = smtp_email
-    msg["To"] = to_email
-    msg["Subject"] = subject
-    msg.attach(MIMEText(body, "plain"))
+    resp = requests.post(
+        "https://api.resend.com/emails",
+        headers={
+            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "from": FROM_EMAIL,
+            "to": [to_email],
+            "subject": subject,
+            "text": body,
+        },
+        timeout=20,
+    )
 
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as server:
-        server.ehlo()
-        server.starttls()
-        server.ehlo()
-        server.login(smtp_email, smtp_password)
-        server.send_message(msg)
+    if resp.status_code >= 300:
+        raise RuntimeError(f"Resend failed: {resp.status_code} {resp.text}")

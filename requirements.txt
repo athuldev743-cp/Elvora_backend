@@ -19,3 +19,4 @@ google-auth-oauthlib==1.1.0
 google-auth-httplib2==0.1.1
 cloudinary==1.36.0
 jwt
+requests

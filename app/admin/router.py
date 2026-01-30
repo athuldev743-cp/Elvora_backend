@@ -214,22 +214,6 @@ def approve_order(
         "message": "Order approved; email queued",
         "order_id": order.id,
     }
-import traceback
-import os
 
-@router.post("/test-email")
-def test_email(admin=Depends(admin_required)):
-    try:
-        to_email = "sreejithu046@gmail.com"  # test target
-        send_order_confirmation_email(
-            to_email=to_email,
-            customer_name="Sree Jithu",
-            order_id=999,
-            product_name="Test Product",
-            total_amount=1.0,
-        )
-        return {"ok": True, "sent_to": to_email}
-    except Exception as e:
-        print("❌ Email send failed:", repr(e))
-        print(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=str(e))
+
+
