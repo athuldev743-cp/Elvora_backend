@@ -7,7 +7,7 @@ import os
 from app.cloudinary_setup import upload_to_cloudinary, delete_from_cloudinary
 from app.email import send_order_confirmation_email 
 from sqlalchemy import text
-
+from fastapi import BackgroundTasks
 
 router = APIRouter()
 
@@ -177,9 +177,12 @@ def reset_orders_table(db: Session = Depends(get_db), admin=Depends(admin_requir
     db.execute(text("DROP TABLE IF EXISTS orders"))
     db.commit()
     return {"status": "ok", "message": "orders table dropped. Restart service to recreate it."}
+
+
 @router.post("/orders/{order_id}/approve")
 def approve_order(
     order_id: int,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     admin=Depends(admin_required)
 ):
@@ -196,8 +199,9 @@ def approve_order(
     db.commit()
     db.refresh(order)
 
-    # 🔔 SEND EMAIL
-    send_order_confirmation_email(
+    # 🔔 Send email in background (non-blocking)
+    background_tasks.add_task(
+        send_order_confirmation_email,
         to_email=order.customer_email,
         customer_name=order.customer_name,
         order_id=order.id,
@@ -207,6 +211,6 @@ def approve_order(
 
     return {
         "status": "success",
-        "message": "Order approved and email sent",
+        "message": "Order approved; email queued",
         "order_id": order.id,
     }
