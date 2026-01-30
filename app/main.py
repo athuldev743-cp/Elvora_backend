@@ -1,11 +1,17 @@
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.database import Base, engine
 
-Base.metadata.create_all(bind=engine)
+# IMPORTANT: import models BEFORE create_all so tables are registered
+from app import models  # noqa: F401
 
 app = FastAPI()
+
+# Create tables when the app starts (not at import time)
+@app.on_event("startup")
+def on_startup():
+    Base.metadata.create_all(bind=engine)
 
 # CORS Configuration
 origins = [
@@ -29,11 +35,11 @@ from app.orders import router as order_router
 from app.admin import router as admin_router
 from app.auth import router as auth_router
 
-# Include routers WITHOUT prefix since they already have full paths
 app.include_router(product_router)
 app.include_router(order_router)
 app.include_router(admin_router, prefix="/admin")
 app.include_router(auth_router, prefix="/auth")
+
 
 @app.get("/")
 async def root():

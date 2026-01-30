@@ -1,3 +1,4 @@
+#models.py
 from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey, VARCHAR, DateTime, Text
 from sqlalchemy.sql import func
 from datetime import datetime
