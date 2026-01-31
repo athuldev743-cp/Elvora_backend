@@ -23,6 +23,7 @@ class Product(Base):
     name = Column(String, nullable=False)
     description = Column(String)
     price = Column(Float, nullable=False)
+    quantity = Column(Integer, default=0, nullable=False)
     image_url = Column(VARCHAR)
     priority = Column(Integer, default=100)
     #created_at = Column(DateTime, default=datetime.utcnow)

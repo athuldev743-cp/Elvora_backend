@@ -1,5 +1,5 @@
 # app/products/router.py - Return real database products
-from fastapi import APIRouter, Depends
+from fastapi import  APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Product
@@ -24,6 +24,8 @@ def get_products(db: Session = Depends(get_db)):
                 "name": product.name,
                 "price": float(product.price) if product.price else 0.0,
                 "description": product.description or "",
+                "quantity": int(product.quantity or 0),  # ✅ NEW
+
                 "image_url": product.image_url or "",
                 "priority": product.priority or 100
             })
@@ -52,6 +54,8 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
             "name": product.name,
             "price": float(product.price) if product.price else 0.0,
             "description": product.description or "",
+            "quantity": int(product.quantity or 0),  # ✅ NEW
+
             "image_url": product.image_url or "",
             "priority": product.priority or 100
         }

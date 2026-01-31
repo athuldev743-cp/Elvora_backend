@@ -37,6 +37,7 @@ async def create_product(
     price: float = Form(...),
     description: str = Form(...),
     priority: int = Form(...),
+     quantity: int = Form(0),
     image: UploadFile = File(...),
     db: Session = Depends(get_db),
     admin=Depends(admin_required)
@@ -51,6 +52,7 @@ async def create_product(
             price=price,
             description=description,
             priority=priority,
+             quantity=quantity,
             image_url=image_url  # Cloudinary URL
         )
         
@@ -67,6 +69,7 @@ async def create_product(
                 "price": product.price,
                 "description": product.description,
                 "priority": product.priority,
+                 "quantity": product.quantity,
                 "image_url": product.image_url
             }
         }
@@ -92,6 +95,7 @@ def get_admin_products(db: Session = Depends(get_db), admin=Depends(admin_requir
                 "price": float(product.price) if product.price else 0.0,
                 "description": product.description or "",
                 "image_url": product.image_url or "",
+                "quantity": int(product.quantity or 0),
                 "priority": product.priority or 100
                 # No email field here either
             })
