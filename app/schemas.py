@@ -33,11 +33,13 @@ class ProductBase(BaseModel):
     name: str
     price: float
     description: Optional[str] = ""
+    quantity: Optional[int] = 0 
     image_url: Optional[str] = ""
     priority: Optional[int] = 100
 
 class ProductCreate(ProductBase):
     pass
+
 
 class ProductUpdate(BaseModel):
     name: Optional[str] = None
@@ -45,6 +47,7 @@ class ProductUpdate(BaseModel):
     description: Optional[str] = None
     image_url: Optional[str] = None
     priority: Optional[int] = None
+    quantity: Optional[int] = None
 
 class ProductResponse(ProductBase):
     id: int

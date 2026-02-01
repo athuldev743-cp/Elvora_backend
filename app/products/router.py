@@ -3,6 +3,7 @@ from fastapi import  APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Product
+from fastapi import HTTPException
 
 router = APIRouter()
 
@@ -35,32 +36,26 @@ def get_products(db: Session = Depends(get_db)):
     except Exception as e:
         print(f"Error fetching products: {e}")
         return []  # Return empty array on error
-    
-# Add this to app/products/router.py after the get_products function
+ 
 @router.get("/products/{product_id}")
 def get_product(product_id: int, db: Session = Depends(get_db)):
     try:
-        # Get single product by ID
         product = db.query(Product).filter(Product.id == product_id).first()
-        
         if not product:
-            # Return 404 if product not found
-            from fastapi import HTTPException
             raise HTTPException(status_code=404, detail="Product not found")
-        
-        # Return product data
+
         return {
             "id": product.id,
             "name": product.name,
             "price": float(product.price) if product.price else 0.0,
             "description": product.description or "",
-            "quantity": int(product.quantity or 0),  # ✅ NEW
-
+            "quantity": int(product.quantity or 0),
             "image_url": product.image_url or "",
             "priority": product.priority or 100
         }
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error fetching product {product_id}: {e}")
-        from fastapi import HTTPException
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")    
+        raise HTTPException(status_code=500, detail="Internal server error")

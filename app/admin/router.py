@@ -8,6 +8,7 @@ from app.cloudinary_setup import upload_to_cloudinary, delete_from_cloudinary
 from app.email import send_order_confirmation_email 
 from sqlalchemy import text
 from fastapi import BackgroundTasks
+from typing import Optional
 
 router = APIRouter()
 
@@ -119,7 +120,11 @@ async def delete_product(product_id: int, db: Session = Depends(get_db), admin=D
         
         # Delete image from Cloudinary if it exists
         if product.image_url and "cloudinary.com" in product.image_url:
-            await delete_from_cloudinary(product.image_url)
+         try:
+             await delete_from_cloudinary(product.image_url)
+         except Exception as e:
+       
+           print("Cloudinary delete failed:", e)
         
         db.delete(product)
         db.commit()
@@ -165,8 +170,9 @@ def get_admin_orders(db: Session = Depends(get_db), admin=Depends(admin_required
 
         return result
     except Exception as e:
-        print(f"Error fetching admin orders: {e}")
-        return []
+     print(f"Error fetching admin products: {e}")
+    raise HTTPException(status_code=500, detail="Failed to fetch admin products")
+
 
 
 # -----------------------------
@@ -221,3 +227,78 @@ def approve_order(
 
 
 
+
+
+@router.put("/update-product/{product_id}")
+async def update_product(
+    product_id: int,
+
+    # all optional (update only what is sent)
+    name: Optional[str] = Form(None),
+    price: Optional[float] = Form(None),
+    description: Optional[str] = Form(None),
+    priority: Optional[int] = Form(None),
+    quantity: Optional[int] = Form(None),
+
+    # optional image replace
+    image: Optional[UploadFile] = File(None),
+
+    db: Session = Depends(get_db),
+    admin=Depends(admin_required)
+):
+    try:
+        product = db.query(Product).filter(Product.id == product_id).first()
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+
+        # update fields only if provided
+        if name is not None:
+            product.name = name
+
+        if price is not None:
+            product.price = price
+
+        if description is not None:
+            product.description = description
+
+        if priority is not None:
+            product.priority = priority
+
+        if quantity is not None:
+            product.quantity = quantity
+
+        # replace image (optional)
+        if image is not None:
+            # delete old from cloudinary if it was cloudinary url
+            if product.image_url and "cloudinary.com" in product.image_url:
+                try:
+                    await delete_from_cloudinary(product.image_url)
+                except Exception as e:
+                    # don't fail update if delete fails
+                    print("Cloudinary delete failed:", e)
+
+            new_url = await upload_to_cloudinary(image, folder="ekabhumi/products")
+            product.image_url = new_url
+
+        db.commit()
+        db.refresh(product)
+
+        return {
+            "status": "success",
+            "message": "Product updated",
+            "product": {
+                "id": product.id,
+                "name": product.name,
+                "price": float(product.price) if product.price else 0.0,
+                "description": product.description or "",
+                "quantity": int(product.quantity or 0),
+                "image_url": product.image_url or "",
+                "priority": product.priority or 100,
+            },
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error updating product: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update product: {str(e)}")
