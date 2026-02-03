@@ -22,12 +22,17 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
+    allow_origins=[
+        "https://elvora-git-main-athul-devs-projects.vercel.app",
+        "http://localhost:3000",
+        "http://localhost:5173",
+    ],
+    
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"],
 )
+
 
 # Import routers
 from app.products import router as product_router
