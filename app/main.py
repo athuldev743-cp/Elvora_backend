@@ -15,7 +15,7 @@ def on_startup():
 
 # CORS Configuration
 origins = [
-    "https://ekabhumi.vercel.app",
+    "https://elvora-git-main-athul-devs-projects.vercel.app",
     "http://localhost:3000",
     "http://localhost:5173",
 ]
