@@ -32,29 +32,42 @@ def admin_required(authorization: str = Header(None)):
 # -----------------------------
 # CREATE PRODUCT - WITHOUT EMAIL
 # -----------------------------
+# app/admin/router.py
+# ... imports ...
+
+# -----------------------------
+# CREATE PRODUCT
+# -----------------------------
 @router.post("/create-product")
 async def create_product(
     name: str = Form(...),
     price: float = Form(...),
     description: str = Form(...),
     priority: int = Form(...),
-     quantity: int = Form(0),
-    image: UploadFile = File(...),
+    quantity: int = Form(0),
+    image: UploadFile = File(...),      # Primary image (Required)
+    image2: UploadFile = File(None),    # ✅ NEW: Second image (Optional)
     db: Session = Depends(get_db),
     admin=Depends(admin_required)
 ):
     try:
-        # Upload image to Cloudinary
+        # 1. Upload Primary Image
         image_url = await upload_to_cloudinary(image, folder="ekabhumi/products")
         
-        # Create product with Cloudinary URL
+        # 2. ✅ NEW: Upload Second Image if provided
+        image2_url = None
+        if image2:
+            image2_url = await upload_to_cloudinary(image2, folder="ekabhumi/products")
+        
+        # 3. Create product
         product = Product(
             name=name,
             price=price,
             description=description,
             priority=priority,
-             quantity=quantity,
-            image_url=image_url  # Cloudinary URL
+            quantity=quantity,
+            image_url=image_url,
+            image2_url=image2_url  # ✅ Store second URL
         )
         
         db.add(product)
@@ -70,23 +83,23 @@ async def create_product(
                 "price": product.price,
                 "description": product.description,
                 "priority": product.priority,
-                 "quantity": product.quantity,
-                "image_url": product.image_url
+                "quantity": product.quantity,
+                "image_url": product.image_url,
+                "image2_url": product.image2_url # ✅ Return it
             }
         }
-        
     except Exception as e:
         print(f"Error creating product: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to create product: {str(e)}")
-# GET ALL PRODUCTS (Admin view)
+
+# -----------------------------
+# GET ADMIN PRODUCTS
 # -----------------------------
 @router.get("/admin-products")
 def get_admin_products(db: Session = Depends(get_db), admin=Depends(admin_required)):
     try:
         products = db.query(Product).order_by(Product.priority.asc()).all()
-        
-        if not products:
-            return []
+        if not products: return []
         
         result = []
         for product in products:
@@ -96,13 +109,14 @@ def get_admin_products(db: Session = Depends(get_db), admin=Depends(admin_requir
                 "price": float(product.price) if product.price else 0.0,
                 "description": product.description or "",
                 "image_url": product.image_url or "",
+                
+                # ✅ NEW: Include image2
+                "image2_url": product.image2_url or "",
+                
                 "quantity": int(product.quantity or 0),
                 "priority": product.priority or 100
-                # No email field here either
             })
-        
         return result
-        
     except Exception as e:
         print(f"Error fetching admin products: {e}")
         return []
@@ -114,30 +128,97 @@ def get_admin_products(db: Session = Depends(get_db), admin=Depends(admin_requir
 async def delete_product(product_id: int, db: Session = Depends(get_db), admin=Depends(admin_required)):
     try:
         product = db.query(Product).filter(Product.id == product_id).first()
+        if not product: raise HTTPException(status_code=404, detail="Product not found")
         
-        if not product:
-            raise HTTPException(status_code=404, detail="Product not found")
-        
-        # Delete image from Cloudinary if it exists
+        # Delete primary image
         if product.image_url and "cloudinary.com" in product.image_url:
-         try:
-             await delete_from_cloudinary(product.image_url)
-         except Exception as e:
-       
-           print("Cloudinary delete failed:", e)
+            try: await delete_from_cloudinary(product.image_url)
+            except Exception as e: print("Cloudinary delete 1 failed:", e)
+
+        # ✅ NEW: Delete secondary image if exists
+        if product.image2_url and "cloudinary.com" in product.image2_url:
+            try: await delete_from_cloudinary(product.image2_url)
+            except Exception as e: print("Cloudinary delete 2 failed:", e)
         
         db.delete(product)
         db.commit()
-        
         return {"message": f"Product {product_id} deleted successfully"}
-        
-    except HTTPException:
-        raise
+    except HTTPException: raise
     except Exception as e:
         print(f"Error deleting product: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to delete product: {str(e)}")
 
 # -----------------------------
+# UPDATE PRODUCT
+# -----------------------------
+@router.put("/update-product/{product_id}")
+async def update_product(
+    product_id: int,
+    # existing fields...
+    name: Optional[str] = Form(None),
+    price: Optional[float] = Form(None),
+    description: Optional[str] = Form(None),
+    priority: Optional[int] = Form(None),
+    quantity: Optional[int] = Form(None),
+    image: Optional[UploadFile] = File(None),
+    
+    # ✅ NEW: Optional second image replace
+    image2: Optional[UploadFile] = File(None),
+
+    db: Session = Depends(get_db),
+    admin=Depends(admin_required)
+):
+    try:
+        product = db.query(Product).filter(Product.id == product_id).first()
+        if not product: raise HTTPException(status_code=404, detail="Product not found")
+
+        # Update standard fields
+        if name is not None: product.name = name
+        if price is not None: product.price = price
+        if description is not None: product.description = description
+        if priority is not None: product.priority = priority
+        if quantity is not None: product.quantity = quantity
+
+        # Update Primary Image
+        if image is not None:
+            if product.image_url and "cloudinary.com" in product.image_url:
+                try: await delete_from_cloudinary(product.image_url)
+                except Exception as e: print("Cloudinary delete 1 failed:", e)
+            new_url = await upload_to_cloudinary(image, folder="ekabhumi/products")
+            product.image_url = new_url
+
+        # ✅ NEW: Update Second Image
+        if image2 is not None:
+            if product.image2_url and "cloudinary.com" in product.image2_url:
+                try: await delete_from_cloudinary(product.image2_url)
+                except Exception as e: print("Cloudinary delete 2 failed:", e)
+            new_url2 = await upload_to_cloudinary(image2, folder="ekabhumi/products")
+            product.image2_url = new_url2
+
+        db.commit()
+        db.refresh(product)
+
+        return {
+            "status": "success",
+            "message": "Product updated",
+            "product": {
+                "id": product.id,
+                "name": product.name,
+                "price": float(product.price) if product.price else 0.0,
+                "image_url": product.image_url or "",
+                "image2_url": product.image2_url or "", # ✅ Return new field
+                # ... other fields
+            },
+        }
+    except HTTPException: raise
+    except Exception as e:
+        print(f"Error updating product: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update product: {str(e)}")
+
+# -----------------------------
+# DELETE PRODUCT
+# -----------------------------
+
 # GET ALL ORDERS
 # -----------------------------
 # -----------------------------
@@ -227,78 +308,3 @@ def approve_order(
 
 
 
-
-
-@router.put("/update-product/{product_id}")
-async def update_product(
-    product_id: int,
-
-    # all optional (update only what is sent)
-    name: Optional[str] = Form(None),
-    price: Optional[float] = Form(None),
-    description: Optional[str] = Form(None),
-    priority: Optional[int] = Form(None),
-    quantity: Optional[int] = Form(None),
-
-    # optional image replace
-    image: Optional[UploadFile] = File(None),
-
-    db: Session = Depends(get_db),
-    admin=Depends(admin_required)
-):
-    try:
-        product = db.query(Product).filter(Product.id == product_id).first()
-        if not product:
-            raise HTTPException(status_code=404, detail="Product not found")
-
-        # update fields only if provided
-        if name is not None:
-            product.name = name
-
-        if price is not None:
-            product.price = price
-
-        if description is not None:
-            product.description = description
-
-        if priority is not None:
-            product.priority = priority
-
-        if quantity is not None:
-            product.quantity = quantity
-
-        # replace image (optional)
-        if image is not None:
-            # delete old from cloudinary if it was cloudinary url
-            if product.image_url and "cloudinary.com" in product.image_url:
-                try:
-                    await delete_from_cloudinary(product.image_url)
-                except Exception as e:
-                    # don't fail update if delete fails
-                    print("Cloudinary delete failed:", e)
-
-            new_url = await upload_to_cloudinary(image, folder="ekabhumi/products")
-            product.image_url = new_url
-
-        db.commit()
-        db.refresh(product)
-
-        return {
-            "status": "success",
-            "message": "Product updated",
-            "product": {
-                "id": product.id,
-                "name": product.name,
-                "price": float(product.price) if product.price else 0.0,
-                "description": product.description or "",
-                "quantity": int(product.quantity or 0),
-                "image_url": product.image_url or "",
-                "priority": product.priority or 100,
-            },
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Error updating product: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to update product: {str(e)}")

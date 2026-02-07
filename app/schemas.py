@@ -35,6 +35,7 @@ class ProductBase(BaseModel):
     description: Optional[str] = ""
     quantity: Optional[int] = 0 
     image_url: Optional[str] = ""
+    image2_url: Optional[str] = None
     priority: Optional[int] = 100
 
 class ProductCreate(ProductBase):

@@ -25,6 +25,7 @@ class Product(Base):
     price = Column(Float, nullable=False)
     quantity = Column(Integer, default=0, nullable=False)
     image_url = Column(VARCHAR)
+    image2_url = Column(VARCHAR, nullable=True)
     priority = Column(Integer, default=100)
     #created_at = Column(DateTime, default=datetime.utcnow)
 
