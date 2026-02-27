@@ -70,19 +70,26 @@ def create_payment(data: PaymentInitRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(order)
 
+    # Clean phone — Instamojo needs exactly 10 digits, no +91 or spaces
+    clean_phone = data.customer_phone.replace("+91", "").replace(" ", "").strip()
+
+    # Backend URL for callbacks
+    BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+
     # Create payment request on Instamojo
     payload = {
         "purpose":                 f"Order #{order.id} - {data.product_name}",
-        "amount":                  str(data.total_amount),
+        "amount":                  f"{data.total_amount:.2f}",
         "buyer_name":              data.customer_name,
         "email":                   data.customer_email,
-        "phone":                   data.customer_phone,
-        "redirect_url":            f"{FRONTEND_URL.rstrip('/')}/api/payment/callback?order_id={order.id}",
-        "webhook":                 f"{FRONTEND_URL.rstrip('/')}/api/payment/webhook",
-        "send_email":              True,
-        "send_sms":                True,
-        "allow_repeated_payments": False,
+        "phone":                   clean_phone,
+        "redirect_url":            f"{BACKEND_URL.rstrip('/')}/api/payment/callback?order_id={order.id}",
+        "webhook":                 f"{BACKEND_URL.rstrip('/')}/api/payment/webhook",
+        "send_email":              "True",
+        "send_sms":                "True",
+        "allow_repeated_payments": "False",
     }
+    print(f"[PAYMENT] Instamojo payload: amount={payload['amount']} phone={clean_phone} redirect={payload['redirect_url']}")
 
     try:
         response = requests.post(
