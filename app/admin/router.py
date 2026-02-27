@@ -306,5 +306,12 @@ def approve_order(
         "order_id": order.id,
     }
 
-
+@router.post("/reset-products-table")
+def reset_products_table(db: Session = Depends(get_db), admin=Depends(admin_required)):
+    # WARNING: THIS DELETES ALL PRODUCTS
+    db.execute(text("DROP TABLE IF EXISTS products"))
+    db.commit()
+    # The table will be recreated automatically next time you restart the app 
+    # (if you have base.metadata.create_all(bind=engine) in your main.py)
+    return {"message": "Products table dropped. Restart backend to recreate."}
 
