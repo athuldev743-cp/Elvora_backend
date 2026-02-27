@@ -19,10 +19,6 @@ AUTH_TOKEN   = os.getenv("INSTAMOJO_AUTH_TOKEN")
 BASE_URL     = os.getenv("INSTAMOJO_BASE_URL", "https://www.instamojo.com/api/1.1/")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
-HEADERS = {
-    "X-Api-Key":    API_KEY,
-    "X-Auth-Token": AUTH_TOKEN,
-}
 
 
 # ── Request schema from Buy.jsx ──
@@ -46,8 +42,18 @@ class PaymentInitRequest(BaseModel):
 # ─────────────────────────────────────────────────────
 @router.post("/payment/create")
 def create_payment(data: PaymentInitRequest, db: Session = Depends(get_db)):
-    if not API_KEY or not AUTH_TOKEN:
+    # Read fresh from env every request (fixes None on Render)
+    api_key    = os.getenv("INSTAMOJO_API_KEY")
+    auth_token = os.getenv("INSTAMOJO_AUTH_TOKEN")
+
+    if not api_key or not auth_token:
         raise HTTPException(status_code=500, detail="Instamojo credentials not configured in .env")
+
+    headers = {
+        "X-Api-Key":    api_key,
+        "X-Auth-Token": auth_token,
+    }
+    print(f"[PAYMENT] Key loaded: {api_key[:6]}... Token loaded: {auth_token[:6]}...")
 
     # Save a PENDING order to DB first so we have an order_id
     order = Order(
@@ -95,7 +101,7 @@ def create_payment(data: PaymentInitRequest, db: Session = Depends(get_db)):
         response = requests.post(
             f"{BASE_URL}payment-requests/",
             data=payload,
-            headers=HEADERS
+            headers=headers
         )
         res_data = response.json()
     except Exception as e:
@@ -134,6 +140,10 @@ def payment_callback(
     order_id:           int,
     db:                 Session = Depends(get_db)
 ):
+    api_key    = os.getenv("INSTAMOJO_API_KEY")
+    auth_token = os.getenv("INSTAMOJO_AUTH_TOKEN")
+    headers    = {"X-Api-Key": api_key, "X-Auth-Token": auth_token}
+
     # Find the pending order
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
@@ -143,7 +153,7 @@ def payment_callback(
     try:
         response = requests.get(
             f"{BASE_URL}payment-requests/{payment_request_id}/{payment_id}/",
-            headers=HEADERS
+            headers=headers
         )
         res_data = response.json()
     except Exception as e:
