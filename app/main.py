@@ -34,7 +34,7 @@ from app.products import router as product_router
 from app.orders import router as order_router
 from app.admin import router as admin_router
 from app.auth import router as auth_router
-from app.payment import router as payment_router
+from app.payment.router import router as payment_router
 
 # Include routers
 app.include_router(product_router)
