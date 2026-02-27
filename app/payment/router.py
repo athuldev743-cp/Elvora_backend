@@ -107,10 +107,12 @@ def create_payment(data: PaymentInitRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Instamojo connection error: {str(e)}")
 
     if not res_data.get("success"):
-        # Clean up the pending order if Instamojo rejected
-        db.delete(order)
-        db.commit()
-        raise HTTPException(status_code=400, detail=res_data)
+    # Clean up the pending order if Instamojo rejected
+     db.delete(order)
+    db.commit()
+    print(f"[PAYMENT] Instamojo rejected: {res_data}")  # ← BEFORE raise
+    raise HTTPException(status_code=400, detail=res_data)
+    
 
     payment_request_id = res_data["payment_request"]["id"]
     payment_url        = res_data["payment_request"]["longurl"]
