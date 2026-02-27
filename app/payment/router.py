@@ -14,8 +14,6 @@ import os
 router = APIRouter()
 
 # ── Credentials from .env ──
-API_KEY      = os.getenv("INSTAMOJO_API_KEY")
-AUTH_TOKEN   = os.getenv("INSTAMOJO_AUTH_TOKEN")
 BASE_URL     = os.getenv("INSTAMOJO_BASE_URL", "https://www.instamojo.com/api/1.1/")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
@@ -194,12 +192,15 @@ async def payment_webhook(request: Request, db: Session = Depends(get_db)):
     form_data = await request.form()
     data      = dict(form_data)
 
+    # Read fresh from env
+    auth_token = os.getenv("INSTAMOJO_AUTH_TOKEN")
+
     # Verify MAC signature
     mac_provided = data.pop("mac", None)
-    if mac_provided and AUTH_TOKEN:
+    if mac_provided and auth_token:
         message        = "|".join(str(data[k]) for k in sorted(data.keys()))
         mac_calculated = hmac.new(
-            AUTH_TOKEN.encode("utf-8"),
+            auth_token.encode("utf-8"),
             message.encode("utf-8"),
             hashlib.sha1
         ).hexdigest()
