@@ -13,13 +13,11 @@ import os
 
 router = APIRouter()
 
-# ── Credentials from .env ──
 BASE_URL     = os.getenv("INSTAMOJO_BASE_URL", "https://www.instamojo.com/api/1.1/")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+BACKEND_URL  = os.getenv("BACKEND_URL",  "http://localhost:8000")
 
 
-
-# ── Request schema from Buy.jsx ──
 class PaymentInitRequest(BaseModel):
     product_id:       int
     product_name:     str
@@ -34,26 +32,22 @@ class PaymentInitRequest(BaseModel):
 
 
 # ─────────────────────────────────────────────────────
-# 1. CREATE PAYMENT REQUEST
-#    Frontend calls this → gets back a payment_url
-#    Buy.jsx does: window.location.href = payment_url
+# 1. CREATE PAYMENT
 # ─────────────────────────────────────────────────────
 @router.post("/payment/create")
 def create_payment(data: PaymentInitRequest, db: Session = Depends(get_db)):
-    # Read fresh from env every request (fixes None on Render)
     api_key    = os.getenv("INSTAMOJO_API_KEY")
     auth_token = os.getenv("INSTAMOJO_AUTH_TOKEN")
 
     if not api_key or not auth_token:
-        raise HTTPException(status_code=500, detail="Instamojo credentials not configured in .env")
+        raise HTTPException(status_code=500, detail="Instamojo credentials not configured")
 
     headers = {
         "X-Api-Key":    api_key,
         "X-Auth-Token": auth_token,
     }
-    print(f"[PAYMENT] Key loaded: {api_key[:6]}... Token loaded: {auth_token[:6]}...")
 
-    # Save a PENDING order to DB first so we have an order_id
+    # Save pending order first to get an order ID
     order = Order(
         product_id       = data.product_id,
         product_name     = data.product_name,
@@ -74,15 +68,14 @@ def create_payment(data: PaymentInitRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(order)
 
-    # Clean phone — Instamojo needs exactly 10 digits, no +91 or spaces
+    # Clean phone — Instamojo needs exactly 10 digits
     clean_phone = data.customer_phone.replace("+91", "").replace(" ", "").strip()
 
-    # Backend URL for callbacks
-    BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+    # Unique purpose to avoid Instamojo duplicate rejection
+    unique_purpose = f"Order #{order.id} - {datetime.utcnow().strftime('%f')}"
 
-    # Create payment request on Instamojo
     payload = {
-        "purpose":                 f"Order #{order.id} - {data.product_name}",
+        "purpose":                 unique_purpose,
         "amount":                  f"{data.total_amount:.2f}",
         "buyer_name":              data.customer_name,
         "email":                   data.customer_email,
@@ -91,9 +84,10 @@ def create_payment(data: PaymentInitRequest, db: Session = Depends(get_db)):
         "webhook":                 f"{BACKEND_URL.rstrip('/')}/api/payment/webhook",
         "send_email":              "True",
         "send_sms":                "True",
-        "allow_repeated_payments": "False",
+        "allow_repeated_payments": "True",
     }
-    print(f"[PAYMENT] Instamojo payload: amount={payload['amount']} phone={clean_phone} redirect={payload['redirect_url']}")
+
+    print(f"[PAYMENT] Creating order={order.id} amount={payload['amount']} phone={clean_phone}")
 
     try:
         response = requests.post(
@@ -103,23 +97,23 @@ def create_payment(data: PaymentInitRequest, db: Session = Depends(get_db)):
         )
         res_data = response.json()
     except Exception as e:
-        db.rollback()
+        db.delete(order)
+        db.commit()
         raise HTTPException(status_code=500, detail=f"Instamojo connection error: {str(e)}")
 
     if not res_data.get("success"):
-    # Clean up the pending order if Instamojo rejected
-     db.delete(order)
-    db.commit()
-    print(f"[PAYMENT] Instamojo rejected: {res_data}")  # ← BEFORE raise
-    raise HTTPException(status_code=400, detail=res_data)
-    
+        print(f"[PAYMENT] Instamojo rejected: {res_data}")
+        db.delete(order)
+        db.commit()
+        raise HTTPException(status_code=400, detail=res_data)
 
     payment_request_id = res_data["payment_request"]["id"]
     payment_url        = res_data["payment_request"]["longurl"]
 
-    # Save the Instamojo payment_request_id in notes for reference
     order.notes = f"{order.notes}\n[INSTAMOJO] request_id={payment_request_id}".strip()
     db.commit()
+
+    print(f"[PAYMENT] ✅ Created payment_request_id={payment_request_id}")
 
     return {
         "success":            True,
@@ -131,7 +125,6 @@ def create_payment(data: PaymentInitRequest, db: Session = Depends(get_db)):
 
 # ─────────────────────────────────────────────────────
 # 2. CALLBACK — Instamojo redirects user here after payment
-#    Verifies payment → updates order → sends user to frontend
 # ─────────────────────────────────────────────────────
 @router.get("/payment/callback")
 def payment_callback(
@@ -144,60 +137,53 @@ def payment_callback(
     auth_token = os.getenv("INSTAMOJO_AUTH_TOKEN")
     headers    = {"X-Api-Key": api_key, "X-Auth-Token": auth_token}
 
-    # Find the pending order
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
+        print(f"[CALLBACK] Order {order_id} not found")
         return RedirectResponse(url=f"{FRONTEND_URL}/?payment=failed&reason=order_not_found")
 
-    # Verify payment status with Instamojo
     try:
         response = requests.get(
             f"{BASE_URL}payment-requests/{payment_request_id}/{payment_id}/",
             headers=headers
         )
         res_data = response.json()
+        print(f"[CALLBACK] Instamojo response: {res_data}")
     except Exception as e:
+        print(f"[CALLBACK] Error verifying: {e}")
         return RedirectResponse(url=f"{FRONTEND_URL}/?payment=failed&reason=verification_error")
 
     payment = res_data.get("payment_request", {}).get("payment", {})
     status  = payment.get("status", "")
 
+    print(f"[CALLBACK] payment_id={payment_id} status={status}")
+
     if status == "Credit":
-        # ✅ Payment successful — update order
         order.payment_status = "paid"
         order.status         = "confirmed"
         order.notes          = f"{order.notes}\n[PAID] payment_id={payment_id}".strip()
         order.updated_at     = datetime.utcnow()
         db.commit()
-
-        return RedirectResponse(
-            url=f"{FRONTEND_URL}/account?payment=success"
-        )
+        print(f"[CALLBACK] ✅ Order {order_id} confirmed")
+        return RedirectResponse(url=f"{FRONTEND_URL}/account?payment=success")
     else:
-        # ❌ Payment failed — update order
         order.payment_status = "failed"
         order.status         = "cancelled"
         order.updated_at     = datetime.utcnow()
         db.commit()
-
-        return RedirectResponse(
-            url=f"{FRONTEND_URL}/?payment=failed"
-        )
+        print(f"[CALLBACK] ❌ Order {order_id} failed status={status}")
+        return RedirectResponse(url=f"{FRONTEND_URL}/?payment=failed")
 
 
 # ─────────────────────────────────────────────────────
-# 3. WEBHOOK — Instamojo POSTs here silently in background
-#    Extra safety net to update payment status
+# 3. WEBHOOK — Instamojo POSTs here in background
 # ─────────────────────────────────────────────────────
 @router.post("/payment/webhook")
 async def payment_webhook(request: Request, db: Session = Depends(get_db)):
-    form_data = await request.form()
-    data      = dict(form_data)
-
-    # Read fresh from env
+    form_data  = await request.form()
+    data       = dict(form_data)
     auth_token = os.getenv("INSTAMOJO_AUTH_TOKEN")
 
-    # Verify MAC signature
     mac_provided = data.pop("mac", None)
     if mac_provided and auth_token:
         message        = "|".join(str(data[k]) for k in sorted(data.keys()))
@@ -215,9 +201,8 @@ async def payment_webhook(request: Request, db: Session = Depends(get_db)):
     buyer_email    = data.get("buyer")
     amount         = data.get("amount")
 
-    print(f"[WEBHOOK] status={payment_status} | payment_id={payment_id} | email={buyer_email} | amount=₹{amount}")
+    print(f"[WEBHOOK] status={payment_status} payment_id={payment_id} email={buyer_email} amount=₹{amount}")
 
-    # Find order by email + amount as fallback update
     if payment_status == "Credit" and buyer_email:
         order = (
             db.query(Order)
@@ -234,6 +219,6 @@ async def payment_webhook(request: Request, db: Session = Depends(get_db)):
             order.notes          = f"{order.notes}\n[WEBHOOK] payment_id={payment_id}".strip()
             order.updated_at     = datetime.utcnow()
             db.commit()
-            print(f"✅ [WEBHOOK] Order {order.id} marked as paid")
+            print(f"[WEBHOOK] ✅ Order {order.id} marked as paid")
 
     return {"status": "ok"}
